@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum OtpPurpose {
+  LOGIN
+  VERIFY_PHONE
+}
+
+enum NotifyVia {
+  PUSH
+  SMS
+}
+
+enum AlertType {
+  PANIC
+  TRACKING
+  CHECKIN_MISSED
+}
+
+enum AlertStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+  EXPIRED
+}
+
+enum CheckInStatus {
+  PENDING
+  SAFE
+  MISSED
+  CANCELLED
+}
+
+enum ReportCategory {
+  ROBBERY
+  KIDNAP_RISK
+  ROAD_BLOCK
+  ARMED_ATTACK
+  ACCIDENT
+  UNREST
+  SUSPICIOUS_ACTIVITY
+  OTHER
+}
+
+enum ReportStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  FLAGGED
+}
+
+model User {
+  id            String   @id @default(uuid())
+  fullName      String
+  phoneNumber   String   @unique
+  phoneVerified Boolean  @default(false)
+  avatarUrl     String?
+  fcmToken      String?
+  isActive      Boolean  @default(true)
+  isBanned      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  otps                Otp[]
+  contacts            EmergencyContact[]
+  alerts              Alert[]
+  checkIns            CheckIn[]
+  reports             Report[]
+  reportVerifications ReportVerification[]
+  reportFlags         ReportFlag[]
+}
+
+model Otp {
+  id          String     @id @default(uuid())
+  userId      String?
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phoneNumber String
+  code        String
+  purpose     OtpPurpose @default(LOGIN)
+  expiresAt   DateTime
+  verified    Boolean    @default(false)
+  attempts    Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@index([phoneNumber, verified])
+  @@index([expiresAt])
+}
+
+model EmergencyContact {
+  id           String      @id @default(uuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName     String
+  phoneNumber  String
+  relationship String?
+  notifyVia    NotifyVia[] @default([PUSH, SMS])
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([userId, phoneNumber])
+  @@index([userId])
+}
+
+model Alert {
+  id              String      @id @default(uuid())
+  creatorId       String
+  creator         User        @relation(fields: [creatorId], references: [id], onDelete: Cascade)
+  type            AlertType   @default(PANIC)
+  status          AlertStatus @default(ACTIVE)
+  latitude        Float?
+  longitude       Float?
+  accuracy        Float?
+  addressLandmark String?
+  isSilent        Boolean     @default(false)
+  message         String?
+  shareToken      String?     @unique
+  expiresAt       DateTime?
+  resolvedAt      DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  recipients      AlertRecipient[]
+  checkIn         CheckIn?
+  trackingPoints  TrackingPoint[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model AlertRecipient {
+  id           String    @id @default(uuid())
+  alertId      String
+  alert        Alert     @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  contactName  String
+  contactPhone String
+  notifiedVia  String    @default("SMS")
+  delivered    Boolean   @default(false)
+  deliveredAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([alertId])
+}
+
+model CheckIn {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String        @default("Safety Check-in")
+  note         String?
+  latitude     Float?
+  longitude    Float?
+  expectedAt   DateTime
+  graceMinutes Int           @default(10)
+  deadlineAt   DateTime
+  status       CheckInStatus @default(PENDING)
+  checkedInAt  DateTime?
+  missedAt     DateTime?
+  cancelledAt  DateTime?
+  alertId      String?       @unique
+  alert        Alert?        @relation(fields: [alertId], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([userId, status])
+  @@index([status, deadlineAt])
+}
+
+model TrackingPoint {
+  id        String   @id @default(uuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  speed     Float?
+  heading   Float?
+  battery   Int?
+  createdAt DateTime @default(now())
+
+  @@index([alertId, createdAt])
+}
+
+model Report {
+  id            String         @id @default(uuid())
+  authorId      String
+  author        User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  category      ReportCategory
+  status        ReportStatus   @default(PENDING)
+  title         String
+  description   String
+  latitude      Float
+  longitude     Float
+  landmark      String?
+  isAnonymous   Boolean        @default(false)
+  verifications Int            @default(0)
+  disputes      Int            @default(0)
+  flagCount     Int            @default(0)
+  expiresAt     DateTime
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  verificationsList ReportVerification[]
+  flags             ReportFlag[]
+
+  @@index([status, expiresAt])
+  @@index([latitude, longitude])
+  @@index([authorId])
+}
+
+model ReportVerification {
+  id        String   @id @default(uuid())
+  reportId  String
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isValid   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, userId])
+}
+
+model ReportFlag {
+  id        String   @id @default(uuid())
+  reportId  String
+  report    Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason    String
+  createdAt DateTime @default(now())
+
+  @@unique([reportId, userId])
+}
