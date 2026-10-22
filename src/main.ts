@@ -81,6 +81,7 @@ const swaggerConfig = new DocumentBuilder()
 
   console.log(`Server running on http://localhost:${port}`);
   console.log(`API docs: http://localhost:${port}/docs`);
+  await app.listen(port, '0.0.0.0');
 }
 
 bootstrap();
