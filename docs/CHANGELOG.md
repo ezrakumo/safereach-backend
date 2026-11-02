@@ -142,4 +142,19 @@ Update this changelog whenever:
 - Security behavior changes
 - Production environment changes
 | Set-Content -Path .\docs\CHANGELOG.md -Encoding UTF8
+
+## 2026-11-02 — Phase 1 Production Hardening
+
+### Added
+- `ALLOW_DEV_OTP` controls OTP exposure (no longer tied to NODE_ENV)
+- `ENABLE_SWAGGER`, `CORS_ORIGINS`, `MAX_BODY_SIZE` configuration
+- `SMS_MODE=dev|real` standard for the SMS layer
+- SOS response now reports `smsAttempted`, `smsDelivered`, `smsDevMode`
+
+### Changed
+- Share URLs built from `APP_URL` + `API_PREFIX` (no hardcoded /api/v1)
+- Dev SMS logs recipients but never marks provider delivery
+
+### Notes
+- `APP_URL` is REQUIRED on every deployment; if missing, share links fall back to localhost and SOS links sent to contacts will be broken
 ````
