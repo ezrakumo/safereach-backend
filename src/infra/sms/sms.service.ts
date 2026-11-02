@@ -47,9 +47,9 @@ export class SmsService {
     }
 
     if (this.mode === 'dev' || !this.client) {
-      this.logger.warn(`[DEV SMS] To ${to.join(', ')}: ${message}`);
-      return { attempted: false, deliveredTo: to, failedTo: [], errors: [] };
-    }
+  this.logger.warn('[DEV SMS] Delivery simulated; no SMS was sent.');
+  return { attempted: false, deliveredTo: [], failedTo: [], errors: [] };
+}
 
     try {
       const payload: Record<string, unknown> = { to, message };

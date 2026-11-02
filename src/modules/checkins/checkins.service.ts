@@ -191,8 +191,8 @@ export class CheckinsService {
           contactName: c.fullName,
           contactPhone: c.phoneNumber,
           notifiedVia: c.notifyVia.includes(NotifyVia.SMS) ? 'SMS' : 'PUSH',
-          delivered: true, // DEV: pretend delivery succeeded
-          deliveredAt: now,
+          delivered: false, // DEV: pretend delivery succeeded
+          deliveredAt: null,
         })),
       });
     }
