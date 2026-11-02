@@ -1,4 +1,4 @@
-﻿import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
@@ -77,8 +77,17 @@ export class AuthService {
       if (!fullName || fullName.trim().length < 2) {
         throw new BadRequestException('Full name is required for first-time signup');
       }
+            const now = new Date();
       user = await this.prisma.user.create({
-        data: { fullName: fullName.trim(), phoneNumber: normalized, phoneVerified: true },
+        data: {
+          fullName: fullName.trim(),
+          phoneNumber: normalized,
+          phoneVerified: true,
+          // Signing up implies acceptance of the policy version shown in the app
+          privacyPolicyVersion: this.config.get<string>('PRIVACY_POLICY_VERSION') ?? '1.0',
+          privacyAcceptedAt: now,
+          termsAcceptedAt: now,
+        },
       });
       isNew = true;
     } else if (!user.phoneVerified) {

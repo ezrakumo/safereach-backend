@@ -72,6 +72,11 @@ model User {
   role          UserRole  @default(USER)
   bannedAt      DateTime?
   banReason     String?
+  privacyPolicyVersion   String?
+  privacyAcceptedAt      DateTime?
+  termsAcceptedAt        DateTime?
+  locationConsentAt      DateTime?
+  marketingConsent       Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
