@@ -64,3 +64,5 @@ node_modules/
 dist/
 *.log
 *-export.json
+
+*-export.json
