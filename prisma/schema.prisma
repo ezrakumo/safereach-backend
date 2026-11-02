@@ -55,17 +55,25 @@ enum ReportStatus {
   FLAGGED
 }
 
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
-  id            String   @id @default(uuid())
+  id            String    @id @default(uuid())
   fullName      String
-  phoneNumber   String   @unique
-  phoneVerified Boolean  @default(false)
+  phoneNumber   String    @unique
+  phoneVerified Boolean   @default(false)
   avatarUrl     String?
   fcmToken      String?
-  isActive      Boolean  @default(true)
-  isBanned      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  isActive      Boolean   @default(true)
+  isBanned      Boolean   @default(false)
+  role          UserRole  @default(USER)
+  bannedAt      DateTime?
+  banReason     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   otps                Otp[]
   contacts            EmergencyContact[]
@@ -127,9 +135,9 @@ model Alert {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  recipients      AlertRecipient[]
-  checkIn         CheckIn?
-  trackingPoints  TrackingPoint[]
+  recipients     AlertRecipient[]
+  trackingPoints TrackingPoint[]
+  checkIn        CheckIn?
 
   @@index([creatorId])
   @@index([status])
@@ -148,6 +156,21 @@ model AlertRecipient {
   createdAt    DateTime  @default(now())
 
   @@index([alertId])
+}
+
+model TrackingPoint {
+  id        String   @id @default(uuid())
+  alertId   String
+  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  latitude  Float
+  longitude Float
+  accuracy  Float?
+  speed     Float?
+  heading   Float?
+  battery   Int?
+  createdAt DateTime @default(now())
+
+  @@index([alertId, createdAt])
 }
 
 model CheckIn {
@@ -172,21 +195,6 @@ model CheckIn {
 
   @@index([userId, status])
   @@index([status, deadlineAt])
-}
-
-model TrackingPoint {
-  id        String   @id @default(uuid())
-  alertId   String
-  alert     Alert    @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  latitude  Float
-  longitude Float
-  accuracy  Float?
-  speed     Float?
-  heading   Float?
-  battery   Int?
-  createdAt DateTime @default(now())
-
-  @@index([alertId, createdAt])
 }
 
 model Report {
@@ -239,4 +247,25 @@ model ReportFlag {
   createdAt DateTime @default(now())
 
   @@unique([reportId, userId])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actorRole  String?
+  action     String
+  entity     String
+  entityId   String?
+  method     String?
+  path       String?
+  statusCode Int?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+  @@index([entity, entityId])
+  @@index([createdAt])
 }

@@ -1,9 +1,11 @@
 ﻿import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
+import { UserRole } from '@prisma/client';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../infra/database/prisma.service.js';
 import { SmsService } from '../../infra/sms/sms.service.js';
+import { AuditService } from '../../infra/audit/audit.service.js';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +16,7 @@ export class AuthService {
     private jwt: JwtService,
     private config: ConfigService,
     private sms: SmsService,
+    private audit: AuditService,
   ) {}
 
   async sendOtp(phoneNumber: string) {
@@ -22,15 +25,12 @@ export class AuthService {
     const expiryMin = Number(this.config.get('OTP_EXPIRY_MINUTES') ?? 5);
     const expiresAt = new Date(Date.now() + expiryMin * 60 * 1000);
 
-    // Invalidate previous unverified OTPs
     await this.prisma.otp.updateMany({
       where: { phoneNumber: normalized, verified: false },
       data: { verified: true },
     });
 
-    await this.prisma.otp.create({
-      data: { phoneNumber: normalized, code, expiresAt },
-    });
+    await this.prisma.otp.create({ data: { phoneNumber: normalized, code, expiresAt } });
 
     const message = `Your SafeReach verification code is ${code}. It expires in ${expiryMin} minutes. Do not share this code.`;
     const sms = await this.sms.sendToOne(normalized, message);
@@ -39,16 +39,14 @@ export class AuthService {
       this.logger.error(`[AUTH] OTP SMS to ${normalized} NOT delivered: ${sms.errors.join('; ')}`);
     }
 
-    // Safety net for development: if the real SMS failed, expose the code so
-    // you cannot get locked out while testing. Removed in production.
-    const isDev = this.config.get('NODE_ENV') !== 'production';
-    const showDevOtp = isDev && (!sms.attempted || sms.deliveredTo.length === 0);
+    const allowDevOtp =
+      String(this.config.get('ALLOW_DEV_OTP') ?? 'false').toLowerCase() === 'true';
 
     return {
       success: true,
       message: sms.deliveredTo.length > 0 ? 'OTP sent by SMS' : 'OTP generated',
       expiresInSeconds: expiryMin * 60,
-      ...(showDevOtp ? { devOtp: code } : {}),
+      ...(allowDevOtp ? { devOtp: code } : {}),
     };
   }
 
@@ -73,6 +71,7 @@ export class AuthService {
     await this.prisma.otp.update({ where: { id: otp.id }, data: { verified: true } });
 
     let user = await this.prisma.user.findUnique({ where: { phoneNumber: normalized } });
+    let isNew = false;
 
     if (!user) {
       if (!fullName || fullName.trim().length < 2) {
@@ -81,14 +80,27 @@ export class AuthService {
       user = await this.prisma.user.create({
         data: { fullName: fullName.trim(), phoneNumber: normalized, phoneVerified: true },
       });
+      isNew = true;
     } else if (!user.phoneVerified) {
-      user = await this.prisma.user.update({
-        where: { id: user.id },
-        data: { phoneVerified: true },
-      });
+      user = await this.prisma.user.update({ where: { id: user.id }, data: { phoneVerified: true } });
     }
 
     if (user.isBanned) throw new UnauthorizedException('Account suspended');
+    if (!user.isActive) throw new UnauthorizedException('Account is not active');
+
+    // Bootstrap admins from ADMIN_PHONES (comma-separated)
+    if (user.role !== UserRole.ADMIN && this.isConfiguredAdmin(normalized)) {
+      user = await this.prisma.user.update({ where: { id: user.id }, data: { role: UserRole.ADMIN } });
+      this.logger.warn(`[AUTH] ${normalized} promoted to ADMIN via ADMIN_PHONES`);
+    }
+
+    await this.audit.log({
+      actorId: user.id,
+      actorRole: user.role,
+      action: isNew ? 'AUTH_SIGNUP' : 'AUTH_LOGIN',
+      entity: 'User',
+      entityId: user.id,
+    });
 
     const tokens = await this.generateTokens(user.id, user.phoneNumber);
     return {
@@ -97,6 +109,7 @@ export class AuthService {
         fullName: user.fullName,
         phoneNumber: user.phoneNumber,
         avatarUrl: user.avatarUrl,
+        role: user.role,
       },
       ...tokens,
     };
@@ -113,6 +126,15 @@ export class AuthService {
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
+  }
+
+  private isConfiguredAdmin(normalizedPhone: string): boolean {
+    const raw = this.config.get<string>('ADMIN_PHONES') ?? '';
+    return raw
+      .split(',')
+      .map((p) => this.normalizePhone(p.trim()))
+      .filter(Boolean)
+      .includes(normalizedPhone);
   }
 
   private async generateTokens(userId: string, phoneNumber: string) {

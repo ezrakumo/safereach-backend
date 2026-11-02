@@ -157,4 +157,18 @@ Update this changelog whenever:
 
 ### Notes
 - `APP_URL` is REQUIRED on every deployment; if missing, share links fall back to localhost and SOS links sent to contacts will be broken
+
+## 2026-11-02 — Phase 2: Rate Limiting
+
+### Added
+- express-rate-limit (ESM-safe replacement for @nestjs/throttler)
+- send-otp: 5 / 15 min per IP and per phone number
+- verify-otp: 10 / 15 min; refresh: 30 / 15 min
+- Per-user: SOS 5 / min, report create 10 / h, verify/flag 30 / h
+- Public share link 60 / min per IP; global 300 / 15 min per IP
+- RATE_LIMIT_ENABLED flag; /health always exempt
+- trust proxy so limits use the real client IP behind Render
+
+### Notes
+- In-memory store; switch to rate-limit-redis if scaling beyond one instance
 ````
